@@ -1,0 +1,28 @@
+game_id,date,opponent,location,team_score,opp_score,record
+401381697,2021-11-09,Bridgewater College VA,H,79,56,1-0 (0-0)
+401381698,2021-11-11,Penn State Wilkes-Barre,H,111,55,2-0 (0-0)
+401381699,2021-11-13,Tennessee State,N,66,59,3-0 (0-0)
+401372237,2021-11-16,William & Mary,H,91,74,4-0 (0-0)
+401365015,2021-11-19,Bowling Green,A,90,84,5-0 (0-0)
+401372038,2021-11-21,Xavier,A,48,88,5-1 (0-0)
+401381700,2021-11-23,Regent University,H,95,20,6-1 (0-0)
+401381701,2021-11-28,Hampton,N,70,61,7-1 (0-0)
+401381702,2021-11-29,Grambling,N,70,63,8-1 (0-0)
+401372232,2021-12-01,UNC Wilmington,A,74,69,9-1 (0-0)
+401374413,2021-12-04,Hampton,A,57,58,9-2 (0-0)
+401371955,2021-12-11,Wichita State,A,58,71,9-3 (0-0)
+401372408,2021-12-21,New Mexico,A,54,68,9-4 (0-0)
+401373053,2022-01-12,Delaware State,H,80,51,10-4 (1-0)
+401381669,2022-01-15,Howard,A,77,74,11-4 (2-0)
+401402013,2022-01-17,Maryland-Eastern Shore,A,72,58,12-4 (3-0)
+401373778,2022-01-22,Coppin State,H,84,77,13-4 (4-0)
+401378598,2022-01-24,Morgan State,H,82,62,14-4 (5-0)
+401381703,2022-01-29,South Carolina State,A,87,69,15-4 (6-0)
+401380993,2022-01-31,North Carolina Central,A,67,70,15-5 (6-1)
+401373078,2022-02-12,Maryland-Eastern Shore,H,70,63,16-5 (7-1)
+401373060,2022-02-14,Delaware State,A,69,66,17-5 (8-1)
+401373782,2022-02-19,Coppin State,A,89,59,18-5 (9-1)
+401378602,2022-02-21,Morgan State,A,74,85,18-6 (9-2)
+401373072,2022-02-26,South Carolina State,H,NA,NA,
+401381705,2022-02-28,North Carolina Central,H,NA,NA,
+401381696,2022-03-03,Howard,H,NA,NA,
