@@ -1,4 +1,4 @@
-2022 NCAA March Madness Simulation
+# 2022 NCAA March Madness Simulation
 
 Written in R and Developed by [Andrew Couch](https://www.linkedin.com/in/andrew-couch/)
 
