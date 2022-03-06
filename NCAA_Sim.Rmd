@@ -1,3 +1,13 @@
+# 2022 NCAA March Madness Simulation
+
+Written in R and Developed by [Andrew Couch](https://www.linkedin.com/in/andrew-couch/)
+
+## Description
+
+A short simulation was created for an entry to my works' march madness bracket. The simulation uses ELO scores that were created from the most recent basketball season. I decided to simulate the march madness bracket since I do not know anything about college sports and basketball. The simulation uses a Monte Carlo simulation with the ELO scores that update throughout the bracket.
+
+## Code for the simulation
+
 ---
 title: "NCAA Simulation"
 author: "Andrew Couch"
@@ -33,8 +43,6 @@ df <- df %>%
          opp = str_replace_all(opp, "_|-", " "),
          opp = str_replace(opp, "St", "State") %>% str_replace("Stateate", "State"))
 ```
-
-
 
 ```{r}
 # Randomly sample from each game (pairwise head-to-head ex. A vs. B and B vs. A)
@@ -83,7 +91,6 @@ east_df <- tibble(div = "east",
                            "Memphis", 
                            "Villanova", "Princeton", "Michigan State", "Notre Dame", "Kentucky", "Longwood"))
 ```
-
 
 ```{r, eval = FALSE}
 # Define a function for simulating a tournament 
@@ -300,8 +307,6 @@ res_df <- res %>%
   unnest(history) 
 ```
 
-
-
 ```{r}
 # Get top 10 teams who win the simulated finals 
 bind_rows(
@@ -319,6 +324,7 @@ bind_rows(
   select(team, total) %>% 
   arrange(desc(total))
 ```
+
 ```{r}
 # View round probabilities for top 5 teams who make it to the final round
 bind_rows(
@@ -355,8 +361,6 @@ bind_rows(
   geom_line(alpha = 0.1)
 ```
 
-
-
 ```{r}
 # View most likely teams to make it for each round
 bind_rows(
@@ -375,7 +379,6 @@ bind_rows(
   arrange(round, rank)
 ```
 
-
 ```{r}
 # Compute head to head probabilities from simulation
 res_df %>% 
@@ -389,7 +392,3 @@ res_df %>%
   pivot_wider(names_from = outcome_a, values_from = n, values_fill = 0) %>% 
   mutate(win_prob = win / (win + loss)) 
 ```
-
-
-
-
