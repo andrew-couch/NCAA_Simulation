@@ -3,22 +3,24 @@ NCAA Simulation
 Andrew Couch
 3/6/2022
 
+# 2022 NCAA March Madness Simulation
+
+Written in R and Developed by [Andrew
+Couch](https://www.linkedin.com/in/andrew-couch/)
+
+## Description
+
+A short simulation was created for an entry to my works’ march madness
+bracket. The simulation uses ELO scores that were created from the most
+recent basketball season. I decided to simulate the march madness
+bracket since I do not know anything about college sports and
+basketball. The simulation uses a Monte Carlo simulation with the ELO
+scores that update throughout the bracket.
+
+## Code for the simulation
+
 ``` r
 library(tidyverse)
-```
-
-    ## -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
-
-    ## v ggplot2 3.3.5     v purrr   0.3.4
-    ## v tibble  3.1.6     v dplyr   1.0.8
-    ## v tidyr   1.2.0     v stringr 1.4.0
-    ## v readr   2.1.2     v forcats 0.5.1
-
-    ## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
-    ## x dplyr::filter() masks stats::filter()
-    ## x dplyr::lag()    masks stats::lag()
-
-``` r
 library(progress)
 library(elo)
 
@@ -357,10 +359,9 @@ bind_rows(
   geom_line()
 ```
 
-    ## `summarise()` has grouped output by 'team', 'round'. You can override using the
-    ## `.groups` argument.
+    ## `summarise()` has grouped output by 'team', 'round'. You can override using the `.groups` argument.
 
-![](NCAA_Sim_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 ``` r
 # View every team's round probabilities 
@@ -378,10 +379,9 @@ bind_rows(
   geom_line(alpha = 0.1)
 ```
 
-    ## `summarise()` has grouped output by 'round'. You can override using the
-    ## `.groups` argument.
+    ## `summarise()` has grouped output by 'round'. You can override using the `.groups` argument.
 
-![](NCAA_Sim_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ``` r
 # View most likely teams to make it for each round
@@ -401,8 +401,7 @@ bind_rows(
   arrange(round, rank)
 ```
 
-    ## `summarise()` has grouped output by 'round'. You can override using the
-    ## `.groups` argument.
+    ## `summarise()` has grouped output by 'round'. You can override using the `.groups` argument.
 
     ## # A tibble: 64 x 4
     ##    round team                wins  rank
