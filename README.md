@@ -1,12 +1,7 @@
-# 2022 NCAA March Madness Simulation
-
-Written in R and Developed by [Andrew Couch](https://www.linkedin.com/in/andrew-couch/)
-
-## Description
-
-A short simulation was created for an entry to my works' march madness bracket. The simulation uses ELO scores that were created from the most recent basketball season. I decided to simulate the march madness bracket since I do not know anything about college sports and basketball. The simulation uses a Monte Carlo simulation with the ELO scores that update throughout the bracket.
-
-## Code for the simulation
+NCAA Simulation
+================
+Andrew Couch
+3/6/2022
 
 # 2022 NCAA March Madness Simulation
 
@@ -26,8 +21,23 @@ scores that update throughout the bracket.
 
 ``` r
 library(tidyverse)
+```
+
+    ## -- Attaching packages ----------------------------------------------------------------------------------------------------------- tidyverse 1.3.1 --
+
+    ## v ggplot2 3.3.5     v purrr   0.3.4
+    ## v tibble  3.1.6     v dplyr   1.0.8
+    ## v tidyr   1.2.0     v stringr 1.4.0
+    ## v readr   2.1.2     v forcats 0.5.1
+
+    ## -- Conflicts -------------------------------------------------------------------------------------------------------------- tidyverse_conflicts() --
+    ## x dplyr::filter() masks stats::filter()
+    ## x dplyr::lag()    masks stats::lag()
+
+``` r
 library(progress)
 library(elo)
+set.seed(9)
 
 # Read in NCAA basketball season history 
 df <- tibble(files = list.files(path = "Data")) %>% 
@@ -35,6 +45,21 @@ df <- tibble(files = list.files(path = "Data")) %>%
          data = map(files, read_csv, show_col_types = FALSE)) %>% 
   unnest(data)
 
+# Read in adjusted elos
+elo_adjust <- read_csv("team_adjustment.csv")
+```
+
+    ## Rows: 759 Columns: 2
+
+    ## -- Column specification ----------------------------------------------------------------------------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (1): team
+    ## dbl (1): value
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Clean team names 
 df <- df %>% 
   select(date, game_id, files, opponent, team_score, opp_score) %>% 
@@ -43,10 +68,19 @@ df <- df %>%
          files = str_replace(files, "Data\\/", "")) %>% 
   distinct() %>% 
   rename(team = files, opp = opponent) %>% 
-  mutate(team = str_replace_all(team, "_|-", " "),
-         team = str_replace(team, "St", "State") %>% str_replace("Stateate", "State"),
-         opp = str_replace_all(opp, "_|-", " "),
-         opp = str_replace(opp, "St", "State") %>% str_replace("Stateate", "State"))
+  mutate(across(c(team, opp), 
+                .fns = ~str_replace_all(.x, "_|-", " ") %>% 
+                  str_replace("St ", "State ")),
+         across(c(team, opp),
+                .fns = ~case_when(
+           .x == "State Peter's" ~ "Saint Peter's",
+           .x == "Abil Christian" ~ "Abilene Christian",
+           .x == "G Washington" ~ "George Washington",
+           .x == "San JosÃ© State" ~ "San Jose State",
+           .x == "Jacksonville St" ~ "Jacksonville State",
+           str_starts(.x, "State ") ~ str_replace(.x, "State ", "Saint "),
+           T ~ .x
+         ))) 
 ```
 
 ``` r
@@ -58,43 +92,76 @@ match_df <- df %>%
   arrange(date)
 
 # Compute ending elo for the season to use in simulation 
-start_elo <- elo.run(score(team_score, opp_score) ~ team + opp, data = match_df, k = 20) %>% 
+# Uses initial elos from ELO_Adjustment.rmd that optimizes ELO scores using AUC
+start_elo <- elo.run(score(team_score, opp_score) ~ team + opp, 
+                     data = match_df, 
+                     k = 20,
+                     initial.elos = set_names(elo_adjust %>% pull(value), elo_adjust %>% pull(team))) %>% 
   final.elos() %>% 
   as_tibble(rownames = "team") %>% 
   rename(elo = value)
 ```
 
 ``` r
+match_df %>% 
+  select(team, opp) %>% 
+  pivot_longer(everything()) %>% 
+  select(value) %>% 
+  distinct() %>% 
+  arrange(value) %>% 
+  filter(str_detect(value, "Jackson"))
+```
+
+    ## # A tibble: 3 x 1
+    ##   value             
+    ##   <chr>             
+    ## 1 Jackson State     
+    ## 2 Jacksonville      
+    ## 3 Jacksonville State
+
+``` r
 # Create dataframes for each division for teams in March Madness bracket
 # Bracket used: https://www.espn.com/espn/feature/story/_/page/bracketology/ncaa-bracketology-projecting-2022-march-madness-men-field
 # Some teams are still playing for bracket and max elo is used to choose teams (will change or not)
-south_df <- tibble(div = "south",
-                   team = c("Baylor", "Norfolk State", "Marquette", "Miami", "UConn",
-                            # Head to head "Rutgers", "Loyola Chicago", 
-                            "Loyola Chicago", 
-                            "Houston", "Toledo", "Ohio State", "Davidson", "Tennessee", "Texas State", "Boise State", 
-                            "San Francisco", "Duke", "Colgate"
-                   ))
-
-midwest_df <- tibble(div = "mdiwest",
-                     team = c("Arizona", "Long Beach State", "TCU", "Murray State", "Texas", "Chattanooga", "Providence", "Iona", "LSU",
-                              "Wyoming", "Purdue", "Northern Iowa", "USC", "San Diego State", "Kansas", "Jacksonville State"))
-
 west_df <- tibble(div = "west",
-                  team = c("Gonzaga", 
-                           # Head to head "New Orleans", "Alcorn State"
-                           "New Orleans",
-                           "Iowa State", "Creighton", "Alabama", "South Dakota State", "UCLA", "Towson", "Saint Mary's", "Michigan", "Texas Tech", 
-                           "Seattle", "Colorado State", "North Carolina", "Wisconsin", "Montana State"))
+                  team = c("Gonzaga", "Georgia State",
+                           "Boise State", "Memphis",
+                           "UConn", "New Mexico State",
+                           "Arkansas", "Vermont",
+                           "Alabama", "Rutgers",
+                           "Texas Tech", "Montana State",
+                           "Michigan State", "Davidson",
+                           "Duke", "CSU Fullerton"))
 
 east_df <- tibble(div = "east",
-                  team = c("Auburn", 
-                           # Head to head"Cleveland State", "Bryant", 
-                           "Bryant", 
-                           "Seton Hall", "Wake Forest", "Arkansas", "North Texas", "Illinois", "Vermont", "Iowa", 
-                           # Head to Head? "Xavier", "Memphis", 
-                           "Memphis", 
-                           "Villanova", "Princeton", "Michigan State", "Notre Dame", "Kentucky", "Longwood"))
+                  team = c("Baylor", "Norfolk State",
+                           "North Carolina", "Marquette",
+                           "Saint Mary's", "Indiana",
+                           "UCLA", "Akron",
+                           "Texas", "Virginia Tech",
+                           "Purdue", "Yale",
+                           "Murray State", "San Francisco",
+                           "Kentucky", "Saint Peter's"))
+
+south_df <- tibble(div = "south",
+                   team = c("Arizona", "Bryant", 
+                           "Seton Hall", "TCU",
+                           "UAB", "Houston",
+                           "Illinois", "Chattanooga", 
+                           "Colorado State", "Michigan", 
+                           "Tennessee", "Longwood", 
+                           "Ohio State", "Loyola Chicago",
+                           "Villanova", "Delaware"))
+
+midwest_df <- tibble(div = "mdiwest",
+                     team = c( "Kansas", "Texas Southern",
+                               "San Diego State", "Creighton",
+                               "Iowa", "Richmond",
+                               "Providence", "South Dakota State",
+                               "LSU", "Iowa State",
+                               "Wisconsin", "Colgate",
+                               "USC", "Miami",
+                               "Auburn", "Jacksonville State"))
 ```
 
 ``` r
@@ -293,12 +360,12 @@ simulate_tournament <- function(trials){
   )
 }
 
-pb <- progress_bar$new(total = 10000, format = "[:bar] :current/:total (:percent)")
+pb <- progress_bar$new(total = 1e5, format = "[:bar] :current/:total (:percent)")
 
 start <- Sys.time()
-res <- tibble(trials = seq.int(1, 10000)) %>% mutate(sim = map(trials, simulate_tournament))
+res <- tibble(trials = seq.int(1, 1e5)) %>% mutate(sim = map(trials, simulate_tournament))
 end <- Sys.time()
-
+# Save simulation (won't be able to upload to github but may upload history as a csv)
 write_rds(res, file = "ncaa_sim.RDS")
 ```
 
@@ -331,18 +398,18 @@ bind_rows(
 ```
 
     ## # A tibble: 10 x 2
-    ##    team               total
-    ##    <chr>              <dbl>
-    ##  1 Murray State         413
-    ##  2 Gonzaga              400
-    ##  3 Arizona              335
-    ##  4 Auburn               302
-    ##  5 North Texas          268
-    ##  6 Duke                 265
-    ##  7 South Dakota State   265
-    ##  8 Houston              257
-    ##  9 Kansas               256
-    ## 10 Providence           230
+    ##    team         total
+    ##    <chr>        <dbl>
+    ##  1 Arizona       6965
+    ##  2 Gonzaga       6501
+    ##  3 Kansas        5485
+    ##  4 Murray State  4769
+    ##  5 Providence    4395
+    ##  6 Auburn        4361
+    ##  7 Wisconsin     3768
+    ##  8 Baylor        3577
+    ##  9 Duke          3484
+    ## 10 Purdue        3426
 
 ``` r
 # View round probabilities for top 5 teams who make it to the final round
@@ -366,7 +433,7 @@ bind_rows(
 
     ## `summarise()` has grouped output by 'team', 'round'. You can override using the `.groups` argument.
 
-![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ``` r
 # View every team's round probabilities 
@@ -386,7 +453,7 @@ bind_rows(
 
     ## `summarise()` has grouped output by 'round'. You can override using the `.groups` argument.
 
-![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
 
 ``` r
 # View most likely teams to make it for each round
@@ -408,20 +475,20 @@ bind_rows(
 
     ## `summarise()` has grouped output by 'round'. You can override using the `.groups` argument.
 
-    ## # A tibble: 64 x 4
-    ##    round team                wins  rank
-    ##    <dbl> <chr>              <dbl> <int>
-    ##  1     1 Gonzaga             6828     1
-    ##  2     1 Murray State        6685     2
-    ##  3     1 Arizona             6602     3
-    ##  4     1 Colorado State      6379     4
-    ##  5     1 Saint Mary's        6189     5
-    ##  6     1 South Dakota State  6113     6
-    ##  7     1 Auburn              6105     7
-    ##  8     1 Duke                6088     8
-    ##  9     1 Purdue              6013     9
-    ## 10     1 Kansas              5992    10
-    ## # ... with 54 more rows
+    ## # A tibble: 63 x 4
+    ##    round team       wins  rank
+    ##    <dbl> <chr>     <dbl> <int>
+    ##  1     1 Kansas    85308     1
+    ##  2     1 Gonzaga   81351     2
+    ##  3     1 Arizona   79077     3
+    ##  4     1 Kentucky  78857     4
+    ##  5     1 Duke      77774     5
+    ##  6     1 Purdue    77116     6
+    ##  7     1 Wisconsin 75459     7
+    ##  8     1 Auburn    74485     8
+    ##  9     1 Baylor    73813     9
+    ## 10     1 Villanova 72791    10
+    ## # ... with 53 more rows
 
 ``` r
 # Compute head to head probabilities from simulation
@@ -437,17 +504,17 @@ res_df %>%
   mutate(win_prob = win / (win + loss)) 
 ```
 
-    ## # A tibble: 1,998 x 6
-    ##    round team_a           team_b              loss   win win_prob
-    ##    <dbl> <chr>            <chr>              <int> <int>    <dbl>
-    ##  1     1 Bryant           Auburn              6105  3895    0.390
-    ##  2     1 Duke             Colgate             3912  6088    0.609
-    ##  3     1 Iowa State       Creighton           4961  5039    0.504
-    ##  4     1 Kansas           Jacksonville State  4008  5992    0.599
-    ##  5     1 Long Beach State Arizona             6602  3398    0.340
-    ##  6     1 Longwood         Kentucky            5236  4764    0.476
-    ##  7     1 Memphis          Iowa                5334  4666    0.467
-    ##  8     1 Miami            Marquette           5077  4923    0.492
-    ##  9     1 New Orleans      Gonzaga             6828  3172    0.317
-    ## 10     1 Norfolk State    Baylor              5943  4057    0.406
-    ## # ... with 1,988 more rows
+    ## # A tibble: 1,991 x 6
+    ##    round team_a             team_b          loss   win win_prob
+    ##    <dbl> <chr>              <chr>          <int> <int>    <dbl>
+    ##  1     1 Bryant             Arizona        79077 20923    0.209
+    ##  2     1 Duke               CSU Fullerton  22226 77774    0.778
+    ##  3     1 Gonzaga            Georgia State  18649 81351    0.814
+    ##  4     1 Illinois           Chattanooga    49093 50907    0.509
+    ##  5     1 Jacksonville State Auburn         74485 25515    0.255
+    ##  6     1 LSU                Iowa State     53965 46035    0.460
+    ##  7     1 Memphis            Boise State    63174 36826    0.368
+    ##  8     1 Michigan           Colorado State 65670 34330    0.343
+    ##  9     1 Michigan State     Davidson       58667 41333    0.413
+    ## 10     1 Norfolk State      Baylor         73813 26187    0.262
+    ## # ... with 1,981 more rows

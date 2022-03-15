@@ -23,12 +23,16 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(progress)
 library(elo)
+set.seed(9)
 
 # Read in NCAA basketball season history 
 df <- tibble(files = list.files(path = "Data")) %>% 
   mutate(files = paste0("Data/", files),
          data = map(files, read_csv, show_col_types = FALSE)) %>% 
   unnest(data)
+
+# Read in adjusted elos
+elo_adjust <- read_csv("team_adjustment.csv")
 
 # Clean team names 
 df <- df %>% 
@@ -38,10 +42,19 @@ df <- df %>%
          files = str_replace(files, "Data\\/", "")) %>% 
   distinct() %>% 
   rename(team = files, opp = opponent) %>% 
-  mutate(team = str_replace_all(team, "_|-", " "),
-         team = str_replace(team, "St", "State") %>% str_replace("Stateate", "State"),
-         opp = str_replace_all(opp, "_|-", " "),
-         opp = str_replace(opp, "St", "State") %>% str_replace("Stateate", "State"))
+  mutate(across(c(team, opp), 
+                .fns = ~str_replace_all(.x, "_|-", " ") %>% 
+                  str_replace("St ", "State ")),
+         across(c(team, opp),
+                .fns = ~case_when(
+           .x == "State Peter's" ~ "Saint Peter's",
+           .x == "Abil Christian" ~ "Abilene Christian",
+           .x == "G Washington" ~ "George Washington",
+           .x == "San JosÃ© State" ~ "San Jose State",
+           .x == "Jacksonville St" ~ "Jacksonville State",
+           str_starts(.x, "State ") ~ str_replace(.x, "State ", "Saint "),
+           T ~ .x
+         ))) 
 ```
 
 ```{r}
@@ -53,44 +66,74 @@ match_df <- df %>%
   arrange(date)
 
 # Compute ending elo for the season to use in simulation 
-start_elo <- elo.run(score(team_score, opp_score) ~ team + opp, data = match_df, k = 20) %>% 
+# Uses initial elos from ELO_Adjustment.rmd that optimizes ELO scores using AUC
+start_elo <- elo.run(score(team_score, opp_score) ~ team + opp, 
+                     data = match_df, 
+                     k = 20,
+                     initial.elos = set_names(elo_adjust %>% pull(value), elo_adjust %>% pull(team))) %>% 
   final.elos() %>% 
   as_tibble(rownames = "team") %>% 
   rename(elo = value)
+```
+
+
+
+```{r}
+match_df %>% 
+  select(team, opp) %>% 
+  pivot_longer(everything()) %>% 
+  select(value) %>% 
+  distinct() %>% 
+  arrange(value) %>% 
+  filter(str_detect(value, "Jackson"))
 ```
 
 ```{r}
 # Create dataframes for each division for teams in March Madness bracket
 # Bracket used: https://www.espn.com/espn/feature/story/_/page/bracketology/ncaa-bracketology-projecting-2022-march-madness-men-field
 # Some teams are still playing for bracket and max elo is used to choose teams (will change or not)
-south_df <- tibble(div = "south",
-                   team = c("Baylor", "Norfolk State", "Marquette", "Miami", "UConn",
-                            # Head to head "Rutgers", "Loyola Chicago", 
-                            "Loyola Chicago", 
-                            "Houston", "Toledo", "Ohio State", "Davidson", "Tennessee", "Texas State", "Boise State", 
-                            "San Francisco", "Duke", "Colgate"
-                   ))
-
-midwest_df <- tibble(div = "mdiwest",
-                     team = c("Arizona", "Long Beach State", "TCU", "Murray State", "Texas", "Chattanooga", "Providence", "Iona", "LSU",
-                              "Wyoming", "Purdue", "Northern Iowa", "USC", "San Diego State", "Kansas", "Jacksonville State"))
-
 west_df <- tibble(div = "west",
-                  team = c("Gonzaga", 
-                           # Head to head "New Orleans", "Alcorn State"
-                           "New Orleans",
-                           "Iowa State", "Creighton", "Alabama", "South Dakota State", "UCLA", "Towson", "Saint Mary's", "Michigan", "Texas Tech", 
-                           "Seattle", "Colorado State", "North Carolina", "Wisconsin", "Montana State"))
+                  team = c("Gonzaga", "Georgia State",
+                           "Boise State", "Memphis",
+                           "UConn", "New Mexico State",
+                           "Arkansas", "Vermont",
+                           "Alabama", "Rutgers",
+                           "Texas Tech", "Montana State",
+                           "Michigan State", "Davidson",
+                           "Duke", "CSU Fullerton"))
 
 east_df <- tibble(div = "east",
-                  team = c("Auburn", 
-                           # Head to head"Cleveland State", "Bryant", 
-                           "Bryant", 
-                           "Seton Hall", "Wake Forest", "Arkansas", "North Texas", "Illinois", "Vermont", "Iowa", 
-                           # Head to Head? "Xavier", "Memphis", 
-                           "Memphis", 
-                           "Villanova", "Princeton", "Michigan State", "Notre Dame", "Kentucky", "Longwood"))
+                  team = c("Baylor", "Norfolk State",
+                           "North Carolina", "Marquette",
+                           "Saint Mary's", "Indiana",
+                           "UCLA", "Akron",
+                           "Texas", "Virginia Tech",
+                           "Purdue", "Yale",
+                           "Murray State", "San Francisco",
+                           "Kentucky", "Saint Peter's"))
+
+south_df <- tibble(div = "south",
+                   team = c("Arizona", "Bryant", 
+                           "Seton Hall", "TCU",
+                           "UAB", "Houston",
+                           "Illinois", "Chattanooga", 
+                           "Colorado State", "Michigan", 
+                           "Tennessee", "Longwood", 
+                           "Ohio State", "Loyola Chicago",
+                           "Villanova", "Delaware"))
+
+midwest_df <- tibble(div = "mdiwest",
+                     team = c( "Kansas", "Texas Southern",
+                               "San Diego State", "Creighton",
+                               "Iowa", "Richmond",
+                               "Providence", "South Dakota State",
+                               "LSU", "Iowa State",
+                               "Wisconsin", "Colgate",
+                               "USC", "Miami",
+                               "Auburn", "Jacksonville State"))
+                   
 ```
+
 
 ```{r, eval = FALSE}
 # Define a function for simulating a tournament 
@@ -288,12 +331,12 @@ simulate_tournament <- function(trials){
   )
 }
 
-pb <- progress_bar$new(total = 10000, format = "[:bar] :current/:total (:percent)")
+pb <- progress_bar$new(total = 1e5, format = "[:bar] :current/:total (:percent)")
 
 start <- Sys.time()
-res <- tibble(trials = seq.int(1, 10000)) %>% mutate(sim = map(trials, simulate_tournament))
+res <- tibble(trials = seq.int(1, 1e5)) %>% mutate(sim = map(trials, simulate_tournament))
 end <- Sys.time()
-
+# Save simulation (won't be able to upload to github but may upload history as a csv)
 write_rds(res, file = "ncaa_sim.RDS")
 ```
 
