@@ -90,7 +90,59 @@ match_df <- df %>%
   slice_sample(n = 1) %>% 
   ungroup() %>% 
   arrange(date)
+```
 
+``` r
+# Define function for optimizing elo scores using AUC
+tune_elo <- function(x){
+  
+  mu <- 1500    
+  sd_var <-  54.06961   
+  
+  elo.run(score(team_score, opp_score) ~ team + opp, 
+          data = match_df, 
+          k = 20,
+          initial.elos = set_names((x * sd_var) + mu , teams)) %>% 
+    summary() %>% 
+    pluck("auc", 1) * -1 
+}
+
+# Optimize elo scores 
+res <- optim(rep(0, 759), tune_elo, method = "L-BFGS-B", lower = -2, upper = 2, control = list(maxit = 1e5))
+
+# View adjusted elo scores 
+elo.run(score(team_score, opp_score) ~ team + opp, 
+        data = match_df, 
+        k = 20,
+        initial.elos = set_names((res$par* 54.06961) + 1500, teams)) %>% 
+  final.elos() %>% 
+  as_tibble(rownames = "team") %>% 
+  rename(adjusted = value) %>% 
+  left_join(
+    elo.run(score(team_score, opp_score) ~ team + opp, 
+            data = match_df, 
+            k = 20) %>% 
+      final.elos() %>% 
+      as_tibble(rownames = "team") %>% 
+      rename(original = value),
+    by = "team"
+  ) %>% 
+  ggplot(aes(x = original, y = adjusted)) + 
+  geom_abline() + 
+  geom_point() + 
+  tune::coord_obs_pred()
+
+# Save elo scores
+elo.run(score(team_score, opp_score) ~ team + opp, 
+        data = match_df, 
+        k = 20,
+        initial.elos = set_names((res$par* 54.06961) + 1500, teams)) %>% 
+  final.elos() %>% 
+  as_tibble(rownames = "team") %>% 
+  write_csv("team_adjustment.csv")
+```
+
+``` r
 # Compute ending elo for the season to use in simulation 
 # Uses initial elos from ELO_Adjustment.rmd that optimizes ELO scores using AUC
 start_elo <- elo.run(score(team_score, opp_score) ~ team + opp, 
@@ -433,7 +485,7 @@ bind_rows(
 
     ## `summarise()` has grouped output by 'team', 'round'. You can override using the `.groups` argument.
 
-![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ``` r
 # View every team's round probabilities 
@@ -453,7 +505,7 @@ bind_rows(
 
     ## `summarise()` has grouped output by 'round'. You can override using the `.groups` argument.
 
-![](README_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
 ``` r
 # View most likely teams to make it for each round
@@ -518,3 +570,250 @@ res_df %>%
     ##  9     1 Michigan State     Davidson       58667 41333    0.413
     ## 10     1 Norfolk State      Baylor         73813 26187    0.262
     ## # ... with 1,981 more rows
+
+``` r
+# Read in sim
+df <- read_rds("ncaa_sim.RDS")
+
+df <- df %>% 
+  unnest(sim) %>% 
+  select(trials, history) %>% 
+  unnest(history)
+
+# Compute head to head matchups
+bracket_df <- df %>% 
+  select(trials, round, team, opp, team_outcome = outcome) %>% 
+  mutate(team_a = if_else(team > opp, team, opp),
+         team_b = if_else(team > opp, opp, team),
+         opp_outcome = if_else(team_outcome == 1, 0, 1),
+         outcome = if_else(team > opp, team_outcome, opp_outcome)) %>% 
+  select(trials, round, team_a, team_b, outcome) %>% 
+  group_by(team_a, team_b) %>% 
+  summarise(avg = mean(outcome)) %>% 
+  ungroup() %>% 
+  mutate(outcome = if_else(avg >= 0.5, 1, 0)) %>% 
+  select(team_a, team_b, outcome)
+```
+
+    ## `summarise()` has grouped output by 'team_a'. You can override using the `.groups` argument.
+
+``` r
+# Create bracket
+west_df <- tibble(div = "west",
+                  team = c("Gonzaga", "Georgia State",
+                           "Boise State", "Memphis",
+                           "UConn", "New Mexico State",
+                           "Arkansas", "Vermont",
+                           "Alabama", "Rutgers",
+                           "Texas Tech", "Montana State",
+                           "Michigan State", "Davidson",
+                           "Duke", "CSU Fullerton"))
+
+east_df <- tibble(div = "east",
+                  team = c("Baylor", "Norfolk State",
+                           "North Carolina", "Marquette",
+                           "Saint Mary's", "Indiana",
+                           "UCLA", "Akron",
+                           "Texas", "Virginia Tech",
+                           "Purdue", "Yale",
+                           "Murray State", "San Francisco",
+                           "Kentucky", "Saint Peter's"))
+
+south_df <- tibble(div = "south",
+                   team = c("Arizona", "Bryant", 
+                            "Seton Hall", "TCU",
+                            "UAB", "Houston",
+                            "Illinois", "Chattanooga", 
+                            "Colorado State", "Michigan", 
+                            "Tennessee", "Longwood", 
+                            "Ohio State", "Loyola Chicago",
+                            "Villanova", "Delaware"))
+
+midwest_df <- tibble(div = "mdiwest",
+                     team = c( "Kansas", "Texas Southern",
+                               "San Diego State", "Creighton",
+                               "Iowa", "Richmond",
+                               "Providence", "South Dakota State",
+                               "LSU", "Iowa State",
+                               "Wisconsin", "Colgate",
+                               "USC", "Miami",
+                               "Auburn", "Jacksonville State"))
+
+# Use simulation to get expected outcomes of each round
+bind_rows(west_df, east_df, midwest_df, south_df) %>% 
+  mutate(game = rep(c(1, 0), n() / 2),
+         game = cumsum(game),
+         round = 1) %>% 
+  arrange(game, team) %>% 
+  mutate(type = rep(c("team_1", "team_2"), n() / 2)) %>% 
+  pivot_wider(names_from = type, values_from = team) %>% 
+  mutate(team_a = if_else(`team_1` > `team_2`, `team_1`, `team_2`),
+         team_b = if_else(`team_1` > `team_2`, `team_2`, `team_1`)) %>% 
+  select(div, round, game, team_a, team_b) %>% 
+  left_join(bracket_df, by = c("team_a", "team_b")) %>% 
+  mutate(team = if_else(outcome == 1, team_a, team_b)) %>% 
+  select(team) %>% 
+  print() %>%
+  mutate(game = rep(c(1, 0), n() / 2),
+         game = cumsum(game),
+         type = rep(c("team_1", "team_2"), n() / 2)) %>% 
+  pivot_wider(names_from = type, values_from = team) %>% 
+  mutate(team_a = if_else(`team_1` > `team_2`, `team_1`, `team_2`),
+         team_b = if_else(`team_1` > `team_2`, `team_2`, `team_1`)) %>% 
+  select(game, team_a, team_b) %>% 
+  left_join(bracket_df, by = c("team_a", "team_b")) %>% 
+  mutate(team = if_else(outcome == 1, team_a, team_b)) %>% 
+  select(team) %>% 
+  print() %>%
+  mutate(game = rep(c(1, 0), n() / 2),
+         game = cumsum(game),
+         type = rep(c("team_1", "team_2"), n() / 2)) %>% 
+  pivot_wider(names_from = type, values_from = team) %>% 
+  mutate(team_a = if_else(`team_1` > `team_2`, `team_1`, `team_2`),
+         team_b = if_else(`team_1` > `team_2`, `team_2`, `team_1`)) %>% 
+  select(game, team_a, team_b) %>% 
+  left_join(bracket_df, by = c("team_a", "team_b")) %>% 
+  mutate(team = if_else(outcome == 1, team_a, team_b)) %>% 
+  select(team) %>% 
+  print() %>%
+  mutate(game = rep(c(1, 0), n() / 2),
+         game = cumsum(game),
+         type = rep(c("team_1", "team_2"), n() / 2)) %>% 
+  pivot_wider(names_from = type, values_from = team) %>% 
+  mutate(team_a = if_else(`team_1` > `team_2`, `team_1`, `team_2`),
+         team_b = if_else(`team_1` > `team_2`, `team_2`, `team_1`)) %>% 
+  select(game, team_a, team_b) %>% 
+  left_join(bracket_df, by = c("team_a", "team_b")) %>% 
+  mutate(team = if_else(outcome == 1, team_a, team_b)) %>% 
+  select(team) %>% 
+  print() %>%
+  mutate(game = rep(c(1, 0), n() / 2),
+         game = cumsum(game),
+         type = rep(c("team_1", "team_2"), n() / 2)) %>% 
+  pivot_wider(names_from = type, values_from = team) %>% 
+  mutate(team_a = if_else(`team_1` > `team_2`, `team_1`, `team_2`),
+         team_b = if_else(`team_1` > `team_2`, `team_2`, `team_1`)) %>% 
+  select(game, team_a, team_b) %>% 
+  left_join(bracket_df, by = c("team_a", "team_b")) %>% 
+  mutate(team = if_else(outcome == 1, team_a, team_b)) %>% 
+  select(team) %>% 
+  print() %>%
+  mutate(game = rep(c(1, 0), n() / 2),
+         game = cumsum(game),
+         type = rep(c("team_1", "team_2"), n() / 2)) %>% 
+  pivot_wider(names_from = type, values_from = team) %>% 
+  mutate(team_a = if_else(`team_1` > `team_2`, `team_1`, `team_2`),
+         team_b = if_else(`team_1` > `team_2`, `team_2`, `team_1`)) %>% 
+  select(game, team_a, team_b) %>% 
+  left_join(bracket_df, by = c("team_a", "team_b")) %>% 
+  mutate(team = if_else(outcome == 1, team_a, team_b)) %>% 
+  select(team)
+```
+
+    ## # A tibble: 32 x 1
+    ##    team          
+    ##    <chr>         
+    ##  1 Gonzaga       
+    ##  2 Boise State   
+    ##  3 UConn         
+    ##  4 Arkansas      
+    ##  5 Alabama       
+    ##  6 Texas Tech    
+    ##  7 Davidson      
+    ##  8 Duke          
+    ##  9 Baylor        
+    ## 10 North Carolina
+    ## # ... with 22 more rows
+    ## # A tibble: 16 x 1
+    ##    team          
+    ##    <chr>         
+    ##  1 Gonzaga       
+    ##  2 Arkansas      
+    ##  3 Texas Tech    
+    ##  4 Duke          
+    ##  5 Baylor        
+    ##  6 Saint Mary's  
+    ##  7 Purdue        
+    ##  8 Murray State  
+    ##  9 Kansas        
+    ## 10 Providence    
+    ## 11 Wisconsin     
+    ## 12 Auburn        
+    ## 13 Arizona       
+    ## 14 Houston       
+    ## 15 Colorado State
+    ## 16 Villanova     
+    ## # A tibble: 8 x 1
+    ##   team          
+    ##   <chr>         
+    ## 1 Gonzaga       
+    ## 2 Duke          
+    ## 3 Baylor        
+    ## 4 Murray State  
+    ## 5 Kansas        
+    ## 6 Auburn        
+    ## 7 Arizona       
+    ## 8 Colorado State
+    ## # A tibble: 4 x 1
+    ##   team        
+    ##   <chr>       
+    ## 1 Gonzaga     
+    ## 2 Murray State
+    ## 3 Kansas      
+    ## 4 Arizona     
+    ## # A tibble: 2 x 1
+    ##   team   
+    ##   <chr>  
+    ## 1 Gonzaga
+    ## 2 Arizona
+
+    ## # A tibble: 1 x 1
+    ##   team   
+    ##   <chr>  
+    ## 1 Gonzaga
+
+``` r
+# Read in past season scores for tie-breaker
+scores <-  tibble(files = list.files(path = "Data")) %>% 
+  mutate(files = paste0("Data/", files),
+         data = map(files, read_csv, show_col_types = FALSE)) %>% 
+  unnest(data) %>% 
+  select(date, game_id, files, opponent, team_score, opp_score) %>% 
+  distinct() %>% 
+  mutate(files = str_replace(files, "_schedule.csv", ""),
+         files = str_replace(files, "Data\\/", "")) %>% 
+  distinct() %>% 
+  rename(team = files, opp = opponent) %>% 
+  mutate(across(c(team, opp), 
+                .fns = ~str_replace_all(.x, "_|-", " ") %>% 
+                  str_replace("St ", "State ")),
+         across(c(team, opp),
+                .fns = ~case_when(
+                  .x == "State Peter's" ~ "Saint Peter's",
+                  .x == "Abil Christian" ~ "Abilene Christian",
+                  .x == "G Washington" ~ "George Washington",
+                  .x == "San JosÃ© State" ~ "San Jose State",
+                  .x == "Jacksonville St" ~ "Jacksonville State",
+                  str_starts(.x, "State ") ~ str_replace(.x, "State ", "Saint "),
+                  T ~ .x
+                ))) 
+
+# Compute median points scored for finalists
+bind_rows(
+  scores %>% 
+    filter(team == "Gonzaga" | team == "Arizona") %>% 
+    select(team, team_score),
+  scores %>% 
+    filter(opp == "Gonzaga" | opp == "Arizona") %>% 
+    select(opp, opp_score) %>% 
+    rename(team = opp, team_score = opp_score)
+) %>% 
+  group_by(team) %>% 
+  summarise(median = median(team_score, na.rm = TRUE))
+```
+
+    ## # A tibble: 2 x 2
+    ##   team    median
+    ##   <chr>    <dbl>
+    ## 1 Arizona     84
+    ## 2 Gonzaga     89
